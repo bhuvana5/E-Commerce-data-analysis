@@ -1,0 +1,170 @@
+Create Database
+------------------
+create database ecommerce;
+
+ Select Database
+------------------
+use ecommerce;
+
+Creating tables
+
+create table customer(cust_id varchar(30),
+cust_pswd varchar(30),custno string, firstname string, lastname string, age int,profession string)
+row format delimited
+fields terminated by ',';
+
+load data local inpath '/home/cloudera/hive/custs.txt' into table customer;
+
+create table txnrecords(txnno INT, txndate STRING, custno INT, amount DOUBLE, 
+category STRING, product STRING, city STRING, state STRING, spendby STRING)
+row format delimited
+fields terminated by ','
+stored as textfile;
+
+
+LOAD DATA LOCAL INPATH 'txns1.txt' OVERWRITE INTO TABLE txnrecords;
+
+select count(*) from txnrecords;
+
+select category, sum(amount) from txnrecords group by category;
+
+select custno, sum(amount) from txnrecords group by custno limit 10;
+
+create table txnrecsByCat(txnno INT, txndate STRING, custno INT, amount DOUBLE,
+product STRING, city STRING, state STRING, spendby STRING)
+partitioned by (category STRING)
+clustered by (state) INTO 10 buckets
+row format delimited
+fields terminated by ','
+stored as textfile;
+
+Loading data in partitioned table
+
+from txnrecords txn INSERT OVERWRITE TABLE txnrecsByCat PARTITION(category)
+select txn.txnno, txn.txndate,txn.custno, txn.amount,txn.product,txn.city,txn.state,
+txn.spendby, txn.category DISTRIBUTE BY category;
+
+create table out1 (custno int,firstname string,age int,profession string,amount double,product string)
+row format delimited                                                                                  
+fields terminated by ',';   
+
+insert overwrite table out1                                                                           
+select a.custno,a.firstname,a.age,a.profession,b.amount,b.product                                     
+from customer a JOIN txnrecords b ON a.custno = b.custno;     
+
+select * from out1 limit 100;
+
+create table out2 (custno int,firstname string,age int,profession string,amount double,product string, level string)
+row format delimited                                                                                  
+fields terminated by ',';   
+
+insert overwrite table out2
+select * , case
+ when age<30 then 'low'
+ when age>=30 and age < 50 then 'middle'
+ when age>=50 then 'old' 
+ else 'others'
+end
+from out1;
+
+
+ select * from out2 limit 100; 
+
+ describe out2;  
+
+create table out3 (level string, amount double)                                                                                   
+row format delimited
+fields terminated by ',';
+
+insert overwrite table out3  
+ select level,sum(amount) from out2 group by level;
+
+create table address
+(
+adrss_no int,
+name varchar(30),
+adrss_1 varchar(30),
+adrss_2 varchar(30),
+city varchar(30),
+state varchar(30),
+)row format delimited
+fields terminated by ',';
+
+select addres.state as state,COLLECT_SET(account.ac_no) as ac_no_list,COUNT(account.ac_no)
+as count_ac_no,SUM(account.trnsc_amt) as sum_of_amount from user_account account JOIN order_details details ON account.ac_no=details.ac_no JOIN  shipping_details ship ON details.order_num=ship.order_num JOIN address addres ON ship.adrss_no=addres.adrss_no group by addres.state;
+
+create table credit_card_details
+(
+ac_no int,
+adrss_no int,
+ccard_no int,
+card_no varchar(30),
+holder_name varchar(30),
+expire_date datetime,
+)row format delimited
+fields terminated by ',';
+
+create table payment_details
+(
+ccard_no int,
+payment_no int,
+amt int,
+state varchar(30),
+date datetime,
+)row format delimited
+fields terminated by ',';
+
+create external table shipping_details(
+adrss_no int,
+order_num int,
+invoice_num int,
+shipping_no int,
+shipping_method string,
+shipping_charge int,
+state string,
+shipping_date string)
+row format delimited
+fields terminated by ','
+location '/ecom/shipping_details';
+
+
+
+create external table order_details(
+order_num int,
+payment_no int,
+ac_no int,
+invoice_num int,
+order_date string,
+total_amt int,
+state string)
+ROW FORMAT delimited
+FIELDS TERMINATED BY ','
+LOCATION '/ecom/order_details';
+
+create external table order_item_details(
+order_item_no int,
+quantity int,
+order_num int,
+shipping_no int,
+inven_item_no int)
+ROW FORMAT delimited
+FIELDS TERMINATED BY ','
+LOCATION '/ecom/order_item_details';
+
+create external table order_items_history(
+seq_no int,
+amt int,
+state string,
+notes string,
+date1 string,
+order_item_no int)
+row format delimited
+fields terminated by ','
+location '/ecom/order_items_history';
+
+select account.ac_no as ac_no,COLLECT_SET(order_item_details.inven_item_no) as item_no_list,SUM(order_item_details.quantity) as quantity,COLLECT_SET(order_items_history.date1) as order_date from user_account account JOIN order_details details ON (account.ac_no=details.ac_no) JOIN order_item_details ON (details.order_num=order_item_details.order_num) JOIN order_items_history ON (order_item_details.order_item_no=order_items_history.order_item_no) where order_items_history.date1>='2015-05-01' 
+AND order_items_history.date1<='2015-08-31'  group by account.ac_no;s
+
+
+
+
